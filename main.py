@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+import json
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -29,42 +30,68 @@ PREMIUM_KEYWORDS = [
     "pop culture",
     "race day",
     "modern classics",
-    "japan historics"
+    "japan historics",
+    "speed machines",
+    "ronin run",
+    "slide street",
+    "canyon warriors"
 ]
 
 seen = set()
 
 
-def notify(message):
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={
-            "chat_id": CHAT_ID,
-            "text": message
-        }
-    )
+def send_telegram(message):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": CHAT_ID,
+                "text": message
+            },
+            timeout=10
+        )
+    except Exception as e:
+        print("Telegram error:", e)
 
 
 while True:
     try:
+        print("Checking Blinkit...")
+
         response = requests.post(
             URL,
             headers=HEADERS,
             json={},
-            timeout=10
+            timeout=20
         )
 
-        data = response.json()
+        print("Status Code:", response.status_code)
+
+        if response.status_code != 200:
+            print("Response:")
+            print(response.text[:1000])
+            time.sleep(60)
+            continue
+
+        try:
+            data = response.json()
+        except Exception:
+            print("Failed to parse JSON")
+            print(response.text[:1000])
+            time.sleep(60)
+            continue
 
         snippets = data.get("response", {}).get("snippets", [])
 
-        for item in snippets:
-            item_text = str(item).lower()
+        print(f"Found {len(snippets)} snippets")
 
-            if not any(keyword in item_text for keyword in PREMIUM_KEYWORDS):
+        for item in snippets:
+            text_blob = json.dumps(item).lower()
+
+            if not any(keyword in text_blob for keyword in PREMIUM_KEYWORDS):
                 continue
 
-            title = "Unknown Premium"
+            title = None
             inventory = 0
 
             try:
@@ -77,12 +104,17 @@ while True:
             except:
                 pass
 
+            if not title:
+                continue
+
+            print(f"Premium found: {title} | Inventory: {inventory}")
+
             if inventory and title not in seen:
-                notify(
+                send_telegram(
                     f"🚨 HOT WHEELS PREMIUM ALERT 🚨\n\n"
                     f"{title}\n"
                     f"Inventory: {inventory}\n\n"
-                    f"Open Blinkit now."
+                    f"Open Blinkit NOW!"
                 )
 
                 seen.add(title)
@@ -90,5 +122,5 @@ while True:
         time.sleep(15)
 
     except Exception as e:
-        print(e)
+        print("Runtime error:", e)
         time.sleep(30)
